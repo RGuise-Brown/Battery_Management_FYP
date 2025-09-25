@@ -53,3 +53,25 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# STM32CubeIDE
+.metadata
+.recommenders
+.settings/
+.project
+.cproject
+Debug/
+Release/
+
+# Build outputs
+*.o
+*.obj
+*.elf
+*.hex
+*.bin
+*.map
+*.lst
+*.axf
+*.htm
+*.lnp
+*.bak
