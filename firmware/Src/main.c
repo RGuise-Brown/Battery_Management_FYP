@@ -29,6 +29,7 @@ int main(void)
 	LED2_Config();
 	UART_Init();
 	ADC_Init();
+	TempSensor_Shutdown_Init(); // Only needed for one of the ADCs
 
 	// Step 3: Send startup message
 	UART_SendString("STM32L4 NUCLEO-L4R5ZI-P Working!\r\n");
@@ -50,6 +51,9 @@ int main(void)
     while (1)
     {
         LED2_Toggle(); //OFF
+
+        // Enable temperature sensor before reading - only for one of the ADCs
+        TempSensor_Enable();
 
         // Get ADC readings
         uint16_t adc_raw = ADC_Read_Raw();
@@ -77,6 +81,9 @@ int main(void)
         delay(500000);  // delay second between readings
 
         LED2_Toggle(); //ON
+
+        // Disable sensor to save power
+        TempSensor_Disable();
     }
 }
 
