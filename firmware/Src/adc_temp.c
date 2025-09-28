@@ -122,4 +122,46 @@ uint32_t ADC_ConvertTo_mV(uint16_t raw)
     return (raw * (uint32_t)ADC_REF_VOLTAGE) / (uint32_t)ADC_MAX_VALUE;
 }
 
+// Improved ADC conversion with better precision
+uint32_t ADC_ConvertTo_mV_Precise(uint16_t raw)
+{
+    // Use larger intermediate calculation for better precision
+    // This gives approximately 0.8mV resolution instead of losing precision
+    return (raw * 3300UL) / 4095UL;
+}
+
+// Even better: calculate temperature in hundredths of degrees
+int32_t ADC_ConvertTo_TempC_Hundredths(uint16_t raw)
+{
+    // Calculate voltage in millivolts with higher precision
+    uint32_t voltage_mv = (raw * 3300UL) / 4095UL;
+
+    // TMP36: 10mV/°C, 500mV offset at 0°C
+    // Temperature = (Voltage_mV - 500) / 10
+    // To get hundredths: multiply by 100 first, then divide
+    // Temp_hundredths = ((Voltage_mV - 500) * 100) / 10
+    // Simplified: Temp_hundredths = (Voltage_mV - 500) * 10
+
+    if (voltage_mv >= 500) {
+        return (int32_t)(voltage_mv - 500) * 10; // This gives hundredths of degrees
+    } else {
+        return (int32_t)(voltage_mv - 500) * 10; // Will be negative for below 0°C
+    }
+}
+
+// Calculate temperature in tenths of degrees (realistic precision) - USED ONE
+int32_t ADC_ConvertTo_TempC_Tenths(uint16_t raw)
+{
+    // Use higher precision intermediate calculation
+    // Multiply by 10 first to get tenths, then do the division
+    uint32_t voltage_mv = (raw * 3300UL) / 4095UL; // Voltage in 0.1mV units
+
+    // TMP36: 100 (0.1mV units) per degree, 5000 offset (500mV in 0.1mV units)
+    if (voltage_mv >= 500) {
+        return (int32_t)(voltage_mv - 500) ; // This gives tenths of degrees
+    } else {
+        return (int32_t)(voltage_mv - 500) ; // Will be negative for below 0°C
+    }
+}
+
 

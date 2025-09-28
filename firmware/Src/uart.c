@@ -104,7 +104,7 @@ void UART_SendString(const char* str)
 	}
 }
 
-void UART_SendNumber(uint32_t num)
+void UART_SendNumber(uint32_t num) // decimals
 {
 	char buffer[12]; // Enough for 32-bit number
 	int i = 0;
@@ -128,4 +128,28 @@ void UART_SendNumber(uint32_t num)
 	{
 		UART_SendChar(buffer [--i]);
 	}
+}
+
+void UART_SendHex(uint32_t num) //hexadecimals
+{
+    char hex_chars[] = "0123456789ABCDEF";
+    char buffer[9]; // 8 hex digits max for 32-bit + null terminator
+    int i = 0;
+
+    // Handle zero explicitly
+    if (num == 0) {
+        UART_SendChar('0');
+        return;
+    }
+
+    // Convert number to hex string (reverse order)
+    while (num > 0 && i < 8) {
+        buffer[i++] = hex_chars[num & 0xF]; // lowest nibble
+        num >>= 4; // shift right 4 bits
+    }
+
+    // Send digits in correct order
+    while (i > 0) {
+        UART_SendChar(buffer[--i]);
+    }
 }

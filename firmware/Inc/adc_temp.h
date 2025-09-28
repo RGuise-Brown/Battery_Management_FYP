@@ -53,6 +53,9 @@ void ADC_Init(void);
 uint16_t ADC_Read_Raw(void);
 float ADC_ConvertTo_Voltage(uint16_t raw);
 uint32_t ADC_ConvertTo_mV(uint16_t raw);
+uint32_t ADC_ConvertTo_mV_Precise(uint16_t raw);
+int32_t ADC_ConvertTo_TempC_Hundredths(uint16_t raw);
+int32_t ADC_ConvertTo_TempC_Tenths(uint16_t raw);
 
 
 #endif /* ADC_TEMP_H_ */

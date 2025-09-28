@@ -310,7 +310,7 @@ bool TMP117_IsPresent(void)
 uint16_t TMP117_ReadRawTemp(void)
 {
 
-    UART_SendString("Temp read start...\r\n");
+    //UART_SendString("Temp read start...\r\n");
 
     // Add a small delay before starting
     for(volatile int i = 0; i < 100000; i++);
@@ -319,37 +319,37 @@ uint16_t TMP117_ReadRawTemp(void)
     uint16_t temp_raw = 0;
     uint32_t timeout;
 
-    UART_SendString("Checking bus status...\r\n");
-    UART_SendString("I2C1_ISR = 0x");
-    UART_SendNumber(I2C1_ISR);
-    UART_SendString("\r\n");
+    //UART_SendString("Checking bus status...\r\n");
+    //UART_SendString("I2C1_ISR = 0x");
+    //UART_SendNumber(I2C1_ISR);
+    //UART_SendString("\r\n");
 
     // Wait for bus to be free
-    UART_SendString("Waiting for bus free...\r\n");
+    //UART_SendString("Waiting for bus free...\r\n");
     timeout = 10000;
     while ((I2C1_ISR & I2C_ISR_BUSY) && timeout--);
     if (timeout == 0) {
-        UART_SendString("ERROR: Bus busy timeout\r\n");
+        //UART_SendString("ERROR: Bus busy timeout\r\n");
     	return 0;
     }
-    UART_SendString("Bus is free\r\n");
+    //UART_SendString("Bus is free\r\n");
 
     // Clear any previous flags
     I2C1_ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF;
-    UART_SendString("Flags cleared\r\n");
+    //UART_SendString("Flags cleared\r\n");
 
     // Step 1: Write register address
-    UART_SendString("Setting up write transaction...\r\n");
+    //UART_SendString("Setting up write transaction...\r\n");
     I2C1_CR2 = 0;
     I2C1_CR2 |= ((uint32_t)TMP117_I2C_ADDRESS << 1); // Device address
     I2C1_CR2 |= (1 << 16); // 1 byte to write (register address)
     I2C1_CR2 |= I2C_CR2_AUTOEND;
     I2C1_CR2 |= I2C_CR2_START;
 
-    UART_SendString("Starting write...\r\n");
+    //UART_SendString("Starting write...\r\n");
 
     // Wait for TXIS and send register address
-    UART_SendString("Waiting for TXIS...\r\n");
+    //UART_SendString("Waiting for TXIS...\r\n");
     timeout = 10000;
     while (!(I2C1_ISR & I2C_ISR_TXIS) && timeout--);
     if (timeout == 0) return 0;
@@ -360,30 +360,30 @@ uint16_t TMP117_ReadRawTemp(void)
     timeout = 10000;
     while (!(I2C1_ISR & I2C_ISR_TC) && timeout--);
     if (timeout == 0) {
-        UART_SendString("ERROR: TXIS timeout\r\n");
-        UART_SendString("I2C1_ISR = 0x");
-        UART_SendNumber(I2C1_ISR);
-        UART_SendString("\r\n");
+        //UART_SendString("ERROR: TXIS timeout\r\n");
+        //UART_SendString("I2C1_ISR = 0x");
+        //UART_SendNumber(I2C1_ISR);
+        //UART_SendString("\r\n");
     	return 0;
     }
 
-    UART_SendString("TXIS ready\r\n");
+    //UART_SendString("TXIS ready\r\n");
 
     I2C1_TXDR = TMP117_TEMP_REGISTER;
-    UART_SendString("Register address sent\r\n");
+    //UART_SendString("Register address sent\r\n");
 
     // Wait for transfer complete
-    UART_SendString("Waiting for TC...\r\n");
+    //UART_SendString("Waiting for TC...\r\n");
     timeout = 10000;
     while (!(I2C1_ISR & I2C_ISR_TC) && timeout--);
     if (timeout == 0) {
-        UART_SendString("ERROR: TC timeout\r\n");
+        //UART_SendString("ERROR: TC timeout\r\n");
         return 0;
     }
-    UART_SendString("Write complete\r\n");
+    //UART_SendString("Write complete\r\n");
 
     // Step 2: Read 2 bytes from device
-    UART_SendString("Setting up read transaction...\r\n");
+    //UART_SendString("Setting up read transaction...\r\n");
     I2C1_CR2 = 0;
     I2C1_CR2 |= ((uint32_t)TMP117_I2C_ADDRESS << 1);
     I2C1_CR2 |= I2C_CR2_RD_WRN; // Read mode
@@ -391,39 +391,39 @@ uint16_t TMP117_ReadRawTemp(void)
     I2C1_CR2 |= I2C_CR2_AUTOEND;
     I2C1_CR2 |= I2C_CR2_START;
 
-    UART_SendString("Starting read...\r\n");
+    //UART_SendString("Starting read...\r\n");
 
     // Read first byte (MSB)
-    UART_SendString("Waiting for first RXNE...\r\n");
+    //UART_SendString("Waiting for first RXNE...\r\n");
     timeout = 10000;
     while (!(I2C1_ISR & I2C_ISR_RXNE) && timeout--);
     if (timeout == 0) {
-        UART_SendString("ERROR: First RXNE timeout\r\n");
+        //UART_SendString("ERROR: First RXNE timeout\r\n");
         return 0;
     }
 
     uint8_t msb = I2C1_RXDR;
-    UART_SendString("MSB read: 0x");
-    UART_SendNumber(msb);
-    UART_SendString("\r\n");
+    //UART_SendString("MSB read: 0x");
+    //UART_SendNumber(msb);
+    //UART_SendString("\r\n");
 
     // Read second byte (LSB)
-    UART_SendString("Waiting for second RXNE...\r\n");
+    //UART_SendString("Waiting for second RXNE...\r\n");
     timeout = 10000;
     while (!(I2C1_ISR & I2C_ISR_RXNE) && timeout--);
     if (timeout == 0) {
-        UART_SendString("ERROR: Second RXNE timeout\r\n");
+        //UART_SendString("ERROR: Second RXNE timeout\r\n");
         return 0;
     }
 
     uint8_t lsb = I2C1_RXDR;
-    UART_SendString("LSB read: 0x");
-    UART_SendNumber(lsb);
-    UART_SendString("\r\n");
+    //UART_SendString("LSB read: 0x");
+    //UART_SendNumber(lsb);
+    //UART_SendString("\r\n");
 
     // Combine MSB and LSB
     temp_raw = (msb << 8) | lsb;
-    UART_SendString("Temperature read complete!\r\n");
+    //UART_SendString("Temperature read complete!\r\n");
 
     return temp_raw;
 }
