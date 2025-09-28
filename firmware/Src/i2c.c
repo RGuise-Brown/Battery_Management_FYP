@@ -81,12 +81,12 @@ static void I2C1_Configure(void)
         return;
     }
 
-    // Step 3: Configure timing register (must be done when PE=0)
+    // Configure timing register (must be done when PE=0)
     // For 16MHz PCLK and 100kHz I2C (from reference manual Table 343)
     // PRESC=1, SCLDEL=4, SDADEL=2, SCLH=0xF, SCLL=0x13
     I2C1_TIMINGR = 0x00303D5B; // This matches the manual's 16MHz/100kHz example
 
-    // Step 4: Configure filters (must be done when PE=0)
+    // Configure filters (must be done when PE=0)
     uint32_t cr1_config = 0;
     // Keep analog filter enabled (ANFOFF=0)
     // Set digital filter to 0 (DNF=0000)
@@ -141,8 +141,8 @@ bool I2C_ScanAddress(uint8_t address)
 
     // Configure transfer: 7-bit address, 0 bytes, auto-end
     I2C1_CR2 = 0; // Clear CR2
-    I2C1_CR2 |= ((uint32_t)address << 1); // Set 7-bit address (shifted left) - CHANGE: & 0xFE
-    I2C1_CR2 |= (1 << 16); // 0 bytes to transfer (NBYTES) - CHANGE 0 TO 1
+    I2C1_CR2 |= ((uint32_t)address << 1); // Set 7-bit address (shifted left)
+    I2C1_CR2 |= (1 << 16); // 1 bytes to transfer (NBYTES)
     I2C1_CR2 |= I2C_CR2_AUTOEND; // Auto-end after transfer
 
     // Start the transfer
@@ -192,7 +192,7 @@ void I2C_ScanBus(void)
     // Scan addresses 0x08 to 0x77 (valid 7-bit I2C addresses)
     for (uint8_t addr = 0x08; addr <= 0x77; addr++)
     {
-        if (I2C_ScanAddress(addr)) // Left shift for 7-bit addressing - NOT SHITING NOW
+        if (I2C_ScanAddress(addr))
         {
             UART_SendString("Device found at address: 0x");
             // Convert to hex string manually
@@ -289,6 +289,274 @@ void I2C_ScanTMP117(void)
 
     UART_SendString("\r\n");
 }
+
+/*
+ * @brief
+ * TMP117 specific functions including:
+ *  _IsPresent()
+ *  _ReadRawTemp()
+ *  _ReadTemp()
+ *  _ConvertToTempC()
+ *  _Test()
+ */
+
+
+
+bool TMP117_IsPresent(void)
+{
+    return I2C_ScanAddress(TMP117_I2C_ADDRESS);
+}
+
+uint16_t TMP117_ReadRawTemp(void)
+{
+
+    UART_SendString("Temp read start...\r\n");
+
+    // Add a small delay before starting
+    for(volatile int i = 0; i < 100000; i++);
+
+    // Read 2 bytes from TMP117 temperature register (0x00)
+    uint16_t temp_raw = 0;
+    uint32_t timeout;
+
+    UART_SendString("Checking bus status...\r\n");
+    UART_SendString("I2C1_ISR = 0x");
+    UART_SendNumber(I2C1_ISR);
+    UART_SendString("\r\n");
+
+    // Wait for bus to be free
+    UART_SendString("Waiting for bus free...\r\n");
+    timeout = 10000;
+    while ((I2C1_ISR & I2C_ISR_BUSY) && timeout--);
+    if (timeout == 0) {
+        UART_SendString("ERROR: Bus busy timeout\r\n");
+    	return 0;
+    }
+    UART_SendString("Bus is free\r\n");
+
+    // Clear any previous flags
+    I2C1_ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF;
+    UART_SendString("Flags cleared\r\n");
+
+    // Step 1: Write register address
+    UART_SendString("Setting up write transaction...\r\n");
+    I2C1_CR2 = 0;
+    I2C1_CR2 |= ((uint32_t)TMP117_I2C_ADDRESS << 1); // Device address
+    I2C1_CR2 |= (1 << 16); // 1 byte to write (register address)
+    I2C1_CR2 |= I2C_CR2_AUTOEND;
+    I2C1_CR2 |= I2C_CR2_START;
+
+    UART_SendString("Starting write...\r\n");
+
+    // Wait for TXIS and send register address
+    UART_SendString("Waiting for TXIS...\r\n");
+    timeout = 10000;
+    while (!(I2C1_ISR & I2C_ISR_TXIS) && timeout--);
+    if (timeout == 0) return 0;
+
+    I2C1_TXDR = TMP117_TEMP_REGISTER; // Register 0x00 (temperature)
+
+    // Wait for transfer complete
+    timeout = 10000;
+    while (!(I2C1_ISR & I2C_ISR_TC) && timeout--);
+    if (timeout == 0) {
+        UART_SendString("ERROR: TXIS timeout\r\n");
+        UART_SendString("I2C1_ISR = 0x");
+        UART_SendNumber(I2C1_ISR);
+        UART_SendString("\r\n");
+    	return 0;
+    }
+
+    UART_SendString("TXIS ready\r\n");
+
+    I2C1_TXDR = TMP117_TEMP_REGISTER;
+    UART_SendString("Register address sent\r\n");
+
+    // Wait for transfer complete
+    UART_SendString("Waiting for TC...\r\n");
+    timeout = 10000;
+    while (!(I2C1_ISR & I2C_ISR_TC) && timeout--);
+    if (timeout == 0) {
+        UART_SendString("ERROR: TC timeout\r\n");
+        return 0;
+    }
+    UART_SendString("Write complete\r\n");
+
+    // Step 2: Read 2 bytes from device
+    UART_SendString("Setting up read transaction...\r\n");
+    I2C1_CR2 = 0;
+    I2C1_CR2 |= ((uint32_t)TMP117_I2C_ADDRESS << 1);
+    I2C1_CR2 |= I2C_CR2_RD_WRN; // Read mode
+    I2C1_CR2 |= (2 << 16); // 2 bytes to read
+    I2C1_CR2 |= I2C_CR2_AUTOEND;
+    I2C1_CR2 |= I2C_CR2_START;
+
+    UART_SendString("Starting read...\r\n");
+
+    // Read first byte (MSB)
+    UART_SendString("Waiting for first RXNE...\r\n");
+    timeout = 10000;
+    while (!(I2C1_ISR & I2C_ISR_RXNE) && timeout--);
+    if (timeout == 0) {
+        UART_SendString("ERROR: First RXNE timeout\r\n");
+        return 0;
+    }
+
+    uint8_t msb = I2C1_RXDR;
+    UART_SendString("MSB read: 0x");
+    UART_SendNumber(msb);
+    UART_SendString("\r\n");
+
+    // Read second byte (LSB)
+    UART_SendString("Waiting for second RXNE...\r\n");
+    timeout = 10000;
+    while (!(I2C1_ISR & I2C_ISR_RXNE) && timeout--);
+    if (timeout == 0) {
+        UART_SendString("ERROR: Second RXNE timeout\r\n");
+        return 0;
+    }
+
+    uint8_t lsb = I2C1_RXDR;
+    UART_SendString("LSB read: 0x");
+    UART_SendNumber(lsb);
+    UART_SendString("\r\n");
+
+    // Combine MSB and LSB
+    temp_raw = (msb << 8) | lsb;
+    UART_SendString("Temperature read complete!\r\n");
+
+    return temp_raw;
+}
+
+int32_t TMP117_ConvertToTempC(uint16_t raw_temp)
+{
+
+    // TMP117 temperature calculation:
+    // Temperature = (raw_value * 7.8125) / 1000 degrees Celsius
+    // Resolution is 0.0078125°C per LSB
+
+    int16_t signed_temp = (int16_t)raw_temp; // interpret as signed 16-bit
+
+    // Scale into hundredths of a °C
+    int32_t temp_c_hundredths = ((int32_t)signed_temp * 78125L) / 1000L;
+
+    return temp_c_hundredths; // e.g. 2534 = 25.34 °C, -5500 = -55.00 °C
+}
+
+void TMP117_Test(void)
+{
+    UART_SendString("=== TMP117 Temperature Reading Test ===\r\n");
+
+    // Check if TMP117 is present
+    if (!TMP117_IsPresent()) {
+        UART_SendString("ERROR: TMP117 not detected at address 0x48\r\n");
+        return;
+    }
+
+    UART_SendString("TMP117 detected successfully!\r\n");
+
+    // Read raw temperature
+    uint16_t raw_temp = TMP117_ReadRawTemp();
+    UART_SendString("Raw temperature value: 0x");
+    UART_SendNumber(raw_temp);
+    UART_SendString(" (decimal: ");
+    UART_SendNumber(raw_temp);
+    UART_SendString(")\r\n");
+
+    // Read temperature in Celsius
+    float temp_c = TMP117_ConvertToTempC(raw_temp);
+
+    // Convert float to integer parts for display (since we don't have printf)
+    int temp_whole = (int)temp_c;
+    int temp_decimal = (int)((temp_c - temp_whole) * 100);
+    if (temp_decimal < 0) temp_decimal = -temp_decimal; // Handle negative temperatures
+
+    UART_SendString("Temperature: ");
+    if (temp_c < 0 && temp_whole == 0) {
+        UART_SendString("-"); // Handle -0.xx case
+    }
+    UART_SendNumber(temp_whole);
+    UART_SendString(".");
+    if (temp_decimal < 10) UART_SendString("0"); // Leading zero for decimals < 10
+    UART_SendNumber(temp_decimal);
+    UART_SendString(" C\r\n\r\n");
+}
+
+/*
+ * @brief Read TMP117 Device ID register to verify device
+ * @return Device ID value (should be 0x0117 for TMP117)
+ */
+uint16_t TMP117_ReadDeviceID(void)
+{
+    uint16_t device_id = 0;
+    uint32_t timeout;
+
+    // Wait for bus to be free
+    timeout = 10000;
+    while ((I2C1_ISR & I2C_ISR_BUSY) && timeout--);
+    if (timeout == 0) return 0;
+
+    // Clear any previous flags
+    I2C1_ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF;
+
+    // Step 1: Write register address (0x0F for Device ID)
+    I2C1_CR2 = 0;
+    I2C1_CR2 |= ((uint32_t)TMP117_I2C_ADDRESS << 1); // Device address
+    I2C1_CR2 |= (1 << 16); // 1 byte to write (register address)
+    I2C1_CR2 |= I2C_CR2_AUTOEND;
+    I2C1_CR2 |= I2C_CR2_START;
+
+    // Wait for TXIS and send register address
+    timeout = 10000;
+    while (!(I2C1_ISR & I2C_ISR_TXIS) && timeout--);
+    if (timeout == 0) return 0;
+
+    I2C1_TXDR = TMP117_DEVICE_ID_REGISTER; // Register 0x0F (Device ID)
+
+    // Wait for transfer complete
+    timeout = 10000;
+    while (!(I2C1_ISR & I2C_ISR_TC) && timeout--);
+    if (timeout == 0) return 0;
+
+    // Step 2: Read 2 bytes from device
+    I2C1_CR2 = 0;
+    I2C1_CR2 |= ((uint32_t)TMP117_I2C_ADDRESS << 1); // Device address
+    I2C1_CR2 |= I2C_CR2_RD_WRN; // Read mode
+    I2C1_CR2 |= (2 << 16); // 2 bytes to read
+    I2C1_CR2 |= I2C_CR2_AUTOEND;
+    I2C1_CR2 |= I2C_CR2_START;
+
+    // Read first byte (MSB)
+    timeout = 10000;
+    while (!(I2C1_ISR & I2C_ISR_RXNE) && timeout--);
+    if (timeout == 0) return 0;
+
+    uint8_t msb = I2C1_RXDR;
+
+    // Read second byte (LSB)
+    timeout = 10000;
+    while (!(I2C1_ISR & I2C_ISR_RXNE) && timeout--);
+    if (timeout == 0) return 0;
+
+    uint8_t lsb = I2C1_RXDR;
+
+    // Wait for transfer complete
+    timeout = 10000;
+    while (!(I2C1_ISR & I2C_ISR_TC) && timeout--);
+
+    // Combine MSB and LSB
+    device_id = (msb << 8) | lsb;
+
+    return device_id;
+}
+
+/*
+ * @brief
+ * Testing I2C Bus Lines, checking GPIO Configuration and printing out results
+ * _TestBusLines()
+ * _VerifyGPIOConfig()
+ *
+ */
 
 void I2C_TestBusLines(void)
 {
