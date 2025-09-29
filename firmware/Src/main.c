@@ -17,7 +17,7 @@
 #include "clock_config.h"
 #include "adc_temp.h"
 #include "temp_sensor_enable.h"
-#include "i2c.h"
+#include "i2c_temp.h"
 
 // Temperature sensing method selection
 typedef enum {
@@ -27,7 +27,7 @@ typedef enum {
 }temp_method_t;
 
 // Change this variable to select temperature method
-#define SELECTED_TEMP_METHOD 	TMP36_BASIC
+#define SELECTED_TEMP_METHOD 	TMP117_I2C
 
 // Function prototypes
 void delay (volatile uint32_t count);
@@ -213,15 +213,31 @@ void read_display_temp(temp_method_t method, uint32_t counter)
                 int32_t temp_c_hundredths = TMP117_ConvertToTempC(raw_temp);
                 UART_SendString("Conversion complete\r\n");
 
-                int temp_whole = temp_c_hundredths / 10000;   // whole degrees
-                int temp_decimal = temp_c_hundredths % 100; // decimal part
+                // Handle negative temperatures correctly
+                if (temp_c_hundredths < 0) {
+                    // Negative temperature
+                    int32_t abs_temp = -temp_c_hundredths;  // Make positive
+                    int temp_whole = abs_temp / 10000;      // whole degrees
+                    int temp_decimal = (abs_temp % 10000) / 100; // decimal part (hundredths to 2 digits)
 
-                UART_SendString("Temperature: ");
-                UART_SendNumber(temp_whole);
-                UART_SendChar('.');
-                if (temp_decimal < 10) UART_SendChar('0'); // leading zero for e.g. .05
-                UART_SendNumber(temp_decimal);
-                UART_SendString(" C\r\n");
+                    UART_SendString("Temperature: -");
+                    UART_SendNumber(temp_whole);
+                    UART_SendChar('.');
+                    if (temp_decimal < 10) UART_SendChar('0'); // leading zero for e.g. .05
+                    UART_SendNumber(temp_decimal);
+                    UART_SendString(" C\r\n");
+                } else {
+                    // Positive temperature
+                    int temp_whole = temp_c_hundredths / 10000;   // whole degrees
+                    int temp_decimal = (temp_c_hundredths % 10000) / 100; // decimal part
+
+                    UART_SendString("Temperature: ");
+                    UART_SendNumber(temp_whole);
+                    UART_SendChar('.');
+                    if (temp_decimal < 10) UART_SendChar('0'); // leading zero for e.g. .05
+                    UART_SendNumber(temp_decimal);
+                    UART_SendString(" C\r\n");
+                }
 
             } else {
                 UART_SendString("ERROR: TMP117 not responding!\r\n");
