@@ -1,0 +1,5 @@
+﻿Designator,Footprint,Quantity,Value,LCSC Part #
+"C1, C2",0603,2,100nF,C14663
+R1,0805,1,75,C3033913
+"R2, R3, R4",0603,3,4.7k,C23162
+U1,MSOP-10_3x3mm_P0.5mm,1,INA226,C49851
