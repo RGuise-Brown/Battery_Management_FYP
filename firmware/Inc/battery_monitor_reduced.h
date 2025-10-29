@@ -27,6 +27,13 @@ typedef struct {
     int32_t adc_temp_tenths_c;         // Temperature in 0.1°C
     bool adc_valid;                    // ADC reading valid
 
+    /* Add INA226 measurements */
+    bool ina226_present;
+    int32_t ina226_bus_mv;
+    int32_t ina226_shunt_mv;
+    int32_t ina226_current_ma;
+    uint32_t ina226_power_mw;
+
     /* System Status */
     uint32_t timestamp_ms;             // Timestamp of reading
 
@@ -45,6 +52,7 @@ void BatteryMonitor_2_PrintSummary(const BatteryMonitorData_t *data);
 void BatteryMonitor_2_PrintDetailed(const BatteryMonitorData_t *data);
 void BatteryMonitor_2_PrintACCOnly(const BatteryMonitorData_t *data);
 void BatteryMonitor_2_PrintTemperatures(const BatteryMonitorData_t *data);
+void BatteryMonitor_2_PrintSummaryCondensed(const BatteryMonitorData_t *data);
 
 /* Utility Functions */
 bool BatteryMonitor_2_CheckDevices(void);

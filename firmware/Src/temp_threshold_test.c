@@ -4,7 +4,7 @@
  *  Created on: Oct 13, 2025
  *      Author: rachaelguise-brown
  *
- * Test A: Temperature Threshold Crossing Test
+ * Test A: Temperature Threshold Crossing Test (v2 - INA226 + TMP36)
  *
  * This test monitors battery as it transitions through the 0°C threshold
  * to validate capacity switching from 8.3Ah (cold) to 10.5Ah (warm) or vice versa.
@@ -22,16 +22,16 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "temp_threshold_test.h"
-#include "bms_algorithms.h"
-#include "battery_monitor.h"
+#include "bms_algorithms_v2.h"           // *** CHANGED: v2 algorithms
+#include "system_monitoring.h"           // *** CHANGED: SystemMonitorData_t
 #include "systick_timing.h"
 #include "uart.h"
 
 /* ==================== Configuration ==================== */
 
-#define READING_INTERVAL_MS     10000      // 10 seconds between readings
-#define MAX_READINGS            20          // Stop after 20 readings (~3.3 hours)
-#define THRESHOLD_TEMP_DC       0           // 0.0°C threshold
+#define READING_INTERVAL_MS     5000      // 5 seconds between readings
+#define MAX_READINGS            200        // Stop after 200 readings (~33 minutes)
+#define THRESHOLD_TEMP_DC       0          // 0.0°C threshold
 
 /* ==================== Test State ==================== */
 
@@ -62,8 +62,8 @@ static const char* GetTempRegion(int16_t temp_dc)
     return (temp_dc < THRESHOLD_TEMP_DC) ? "COLD" : "WARM";
 }
 
-static void LogReading(uint16_t reading_num, BatteryMonitorData_t* monitor,
-                      BmsResult_Int_t* bms_result)
+static void LogReading(uint16_t reading_num, const SystemMonitorData_t* monitor,
+                      const BmsResult_Int_t* bms_result)
 {
     uint32_t elapsed_min = (GetTick_ms() - temp_test_ctx.test_start_time_ms) / 60000;
 
@@ -92,17 +92,22 @@ static void LogReading(uint16_t reading_num, BatteryMonitorData_t* monitor,
 
     // Voltage
     UART_SendString("| Voltage:      ");
-    UART_SendNumber(monitor->acc_voltage_mv);
+    UART_SendNumber(monitor->ina226_bus_mv);       // *** CHANGED
     UART_SendString(" mV\r\n");
+
+    // Current
+    UART_SendString("| Current:      ");
+    UART_SendSignedNumber(monitor->ina226_current_ma);  // *** CHANGED
+    UART_SendString(" mA\r\n");
 
     // Available Capacity
     UART_SendString("| Avail Cap:    ");
     UART_SendNumber(bms_result->available_capacity_uah / 1000);
     UART_SendString(" mAh\r\n");
 
-    // Accumulated Capacity
-    UART_SendString("| Accumulated:  ");
-    UART_SendNumber(monitor->acc_capacity_uah / 1000);
+    // Accumulated (Used) Capacity
+    UART_SendString("| Used Cap:     ");
+    UART_SendNumber(monitor->accumulated_uAh / 1000);   // *** CHANGED
     UART_SendString(" mAh\r\n");
 
     // SOC
@@ -115,7 +120,7 @@ static void LogReading(uint16_t reading_num, BatteryMonitorData_t* monitor,
     UART_SendString("+============================================+\r\n");
 }
 
-static void CheckThresholdCrossing(int16_t current_temp_dc, BmsResult_Int_t* bms_result)
+static void CheckThresholdCrossing(int16_t current_temp_dc, const BmsResult_Int_t* bms_result)
 {
     static int16_t previous_temp_dc = 0;
     static bool first_reading = true;
@@ -190,7 +195,8 @@ void TempThresholdTest_Start(void)
     UART_SendString("\r\n");
     UART_SendString("************************************************\r\n");
     UART_SendString("*                                              *\r\n");
-    UART_SendString("*   TEMPERATURE THRESHOLD CROSSING TEST       *\r\n");
+    UART_SendString("*   TEMPERATURE THRESHOLD CROSSING TEST (v2)  *\r\n");
+    UART_SendString("*   Using INA226 + TMP36                      *\r\n");
     UART_SendString("*                                              *\r\n");
     UART_SendString("************************************************\r\n");
     UART_SendString("\r\n");
@@ -204,7 +210,7 @@ void TempThresholdTest_Start(void)
     UART_SendString("     (e.g., -25C in freezer)\r\n");
     UART_SendString("  2. Move battery to other temperature\r\n");
     UART_SendString("     (e.g., room temp ~22C)\r\n");
-    UART_SendString("  3. Readings every 10 minutes\r\n");
+    UART_SendString("  3. Readings every 10 seconds\r\n");
     UART_SendString("  4. Observe capacity switch at 0C\r\n");
     UART_SendString("\r\n");
 
@@ -216,15 +222,13 @@ void TempThresholdTest_Start(void)
 
     UART_SendString("Reading initial state...\r\n");
 
-    // Read initial state
-    BatteryMonitorData_t monitor_data;
-    BatteryMonitor_ReadAll(&monitor_data);
+    // *** CHANGED: Read SystemMonitorData_t ***
+    SystemMonitorData_t monitor_data;
+    SystemMonitor_ReadAll(&monitor_data);    // *** CHANGED function name
 
-    BatteryState_Int_t bms_state;
-    convert_monitor_to_bms_int(&monitor_data, &bms_state);
-
+    // *** CHANGED: Call v2 BMS function ***
     BmsResult_Int_t bms_result;
-    bms_update_soc_int(&bms_state, &bms_result);
+    bms_update_soc_v2(&monitor_data, &bms_result);
 
     temp_test_ctx.start_temp_dc = monitor_data.adc_temp_tenths_c;
     temp_test_ctx.capacity_before_uah = bms_result.available_capacity_uah;
@@ -267,19 +271,17 @@ void TempThresholdTest_Update(void)
         temp_test_ctx.last_reading_time_ms = current_time;
         temp_test_ctx.reading_count++;
 
-        // Read battery state
-        BatteryMonitorData_t monitor_data;
-        BatteryMonitor_ReadAll(&monitor_data);
+        // *** CHANGED: Read system monitor data ***
+        SystemMonitorData_t monitor_data;
+        SystemMonitor_ReadAll(&monitor_data);
 
-        BatteryState_Int_t bms_state;
-        convert_monitor_to_bms_int(&monitor_data, &bms_state);
-
+        // *** CHANGED: Call v2 BMS function ***
         BmsResult_Int_t bms_result;
-        bms_update_soc_int(&bms_state, &bms_result);
+        bms_update_soc_v2(&monitor_data, &bms_result);
 
         // Add temperature reading for trend analysis
         int16_t temp_dc = monitor_data.adc_temp_tenths_c;
-        bms_add_temp_reading(temp_dc, current_time);
+        bms_add_temp_reading_v2(temp_dc, current_time);   // *** CHANGED: v2 function
 
         // Log reading
         LogReading(temp_test_ctx.reading_count, &monitor_data, &bms_result);
@@ -290,11 +292,28 @@ void TempThresholdTest_Update(void)
         // Check temperature trend
         if (temp_test_ctx.reading_count >= 10) {
             TempTrendResult_t trend_result;
-            bms_monitor_temperature_trend(&trend_result);
+            bms_monitor_temperature_trend_v2(&trend_result);  // *** CHANGED: v2 function
 
             if (trend_result.status != TREND_INSUFFICIENT_DATA) {
+                UART_SendString("\r\n=== TEMPERATURE TREND ===\r\n");
+                UART_SendString(trend_result.message);
                 UART_SendString("\r\n");
-                print_temp_trend_int(&trend_result);
+                UART_SendString("Trend: ");
+                UART_SendSignedNumber(trend_result.trend_dc_per_hour / 10);
+                UART_SendString(".");
+                uint16_t trend_frac = (trend_result.trend_dc_per_hour < 0) ?
+                                      ((-trend_result.trend_dc_per_hour) % 10) :
+                                      (trend_result.trend_dc_per_hour % 10);
+                UART_SendNumber(trend_frac);
+                UART_SendString(" C/hr\r\n");
+                UART_SendString("Predicted 1hr: ");
+                UART_SendSignedNumber(trend_result.predicted_temp_1hr_dc / 10);
+                UART_SendString(".");
+                uint16_t pred_frac = (trend_result.predicted_temp_1hr_dc < 0) ?
+                                     ((-trend_result.predicted_temp_1hr_dc) % 10) :
+                                     (trend_result.predicted_temp_1hr_dc % 10);
+                UART_SendNumber(pred_frac);
+                UART_SendString(" C\r\n\r\n");
             }
         }
 

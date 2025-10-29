@@ -160,6 +160,8 @@ void BQ35100_I2C1_Init(void)
 
     UART_SendString("BQ35100 I2C initialization complete\r\n");
 
+    BQ35100_I2C1_CheckConfiguration();
+
     // Wait a bit for device to be ready
     for(volatile int i = 0; i < 100000; i++);
 
@@ -238,6 +240,46 @@ void BQ35100_I2C1_ScanDevice(void)
     }
 
     UART_SendString("\r\n");
+}
+
+void BQ35100_I2C1_CheckConfiguration(void)
+{
+    UART_SendString("\n=== EOS MODE CONFIGURATION CHECK ===\r\n");
+
+    // Read Operation Config A
+    uint8_t config = BQ35100_I2C1_ReadOperationConfigA();
+    UART_SendString("Operation Config A: 0x");
+    UART_SendHex(config);
+    UART_SendString("\r\n");
+
+    // Check GMSEL bits [1:0]
+    uint8_t mode = config & 0x03;
+    UART_SendString("GMSEL bits [1:0]: ");
+    UART_SendNumber(mode);
+    UART_SendString(" = ");
+    switch(mode) {
+        case 0x00:
+            UART_SendString("ACCUMULATOR mode\r\n");
+            UART_SendString("*** ERROR: Should be 0x02 for EOS mode! ***\r\n");
+            break;
+        case 0x01:
+            UART_SendString("STATE-OF-HEALTH mode\r\n");
+            UART_SendString("*** ERROR: Should be 0x02 for EOS mode! ***\r\n");
+            break;
+        case 0x02:
+            UART_SendString("END-OF-SERVICE mode [CORRECT]\r\n");
+            break;
+        case 0x03:
+            UART_SendString("INVALID\r\n");
+            break;
+    }
+
+    // Check if sealed
+    bool sealed = BQ35100_I2C1_IsSealed();
+    UART_SendString("Device sealed: ");
+    UART_SendString(sealed ? "YES\r\n" : "NO\r\n");
+
+    UART_SendString("\n");
 }
 
 /* ==================== Low-Level I2C Functions ==================== */
@@ -732,7 +774,7 @@ bool BQ35100_I2C1_Unseal(void)
     UART_SendString("Unsealing device...\r\n");
 
     // Send first unseal key BYTE-SWAPPED (0x0414 stored, send 0x1404)
-    if (!BQ35100_I2C1_WriteCommand(BQ35100_CONTROL_CMD, 0x1404))
+    if (!BQ35100_I2C1_WriteCommand(BQ35100_CONTROL_CMD, 0x0414))
     {
         UART_SendString("  ERROR: Failed to send first unseal key\r\n");
         return false;
@@ -742,7 +784,7 @@ bool BQ35100_I2C1_Unseal(void)
     for (volatile int i = 0; i < 10000; i++);
 
     // Send second unseal key BYTE-SWAPPED (0x3672 stored, send 0x7236)
-    if (!BQ35100_I2C1_WriteCommand(BQ35100_CONTROL_CMD, 0x7236))
+    if (!BQ35100_I2C1_WriteCommand(BQ35100_CONTROL_CMD, 0x3672))
     {
         UART_SendString("  ERROR: Failed to send second unseal key\r\n");
         return false;
@@ -1228,13 +1270,13 @@ void BQ35100_I2C1_PerformEOSMeasurement(void) // Simulates one periodic measurem
 
     // Wait for measurement to complete
     // In real application, this should be during your load pulse
-    for(volatile uint32_t i = 0; i < 5000000; i++); // ~300ms delay
+    for(volatile uint32_t i = 0; i < 16000000; i++); // ~1 second at 16MHz
 
     // Send GAUGE_STOP
     BQ35100_I2C1_GaugeStop();
 
     // Wait for G_DONE flag
-    uint32_t timeout = 100;
+    uint32_t timeout = 500;
     while (timeout-- && !BQ35100_I2C1_IsGaugeDone())
     {
         for(volatile uint32_t i = 0; i < 100000; i++); // ~6ms delay
@@ -1255,6 +1297,7 @@ void BQ35100_I2C1_PerformEOSMeasurement(void) // Simulates one periodic measurem
 
     UART_SendString("Impedance: ");
     UART_SendNumber(impedance);
+    //UART_SendString(" mOhm \r\n");
     UART_SendString(" mOhm, Pulse Count: ");
     UART_SendNumber(pulseCount);
     UART_SendString("\r\n");

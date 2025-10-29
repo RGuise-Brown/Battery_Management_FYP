@@ -89,6 +89,7 @@
 #define BQ35100_CTRL_EXIT_CAL           0x0080  // Exit calibration
 #define BQ35100_CTRL_ENTER_CAL          0x0081  // Enter calibration
 #define BQ35100_CTRL_NEW_BATTERY        0xA613  // New battery (reset EOS)
+#define BQ35100_CTRL_ACC_RESET 			0x0042 	// Reset ACC mode
 
 /* ==================== Data Flash Addresses ==================== */
 

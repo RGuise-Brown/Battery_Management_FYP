@@ -12,6 +12,7 @@
 
 #include "bq35100_i2c_acc.h"
 #include "uart.h"
+#include "systick_timing.h"
 
 /* ==================== Private Helper Functions ==================== */
 
@@ -171,6 +172,7 @@ void BQ35100_I2C2_Init(void)
     // Configure I2C
     I2C2_Configure();
 
+
     UART_SendString("BQ35100 I2C2 initialization complete\r\n");
 
     // Wait a bit for device to be ready
@@ -252,6 +254,12 @@ void BQ35100_I2C2_ScanDevice(void)
 
     UART_SendString("\r\n");
 }
+
+/**
+ * Reset accumulated capacity to zero
+ * Call this when starting with a fresh battery
+ */
+
 
 /* ==================== Low-Level I2C Functions ==================== */
 
@@ -494,7 +502,7 @@ uint16_t BQ35100_I2C2_ReadDeviceType(void)
 void BQ35100_I2C2_GaugeStart(void)
 {
     BQ35100_I2C2_WriteCommand(BQ35100_CONTROL_CMD, BQ35100_CTRL_GAUGE_START);
-    UART_SendString("BQ35100 I2C2: Gauge started\r\n");
+    //UART_SendString("BQ35100 I2C2: Gauge started\r\n");
 }
 
 void BQ35100_I2C2_GaugeStop(void)
@@ -503,14 +511,20 @@ void BQ35100_I2C2_GaugeStop(void)
     UART_SendString("BQ35100 I2C2: Gauge stopped\r\n");
 }
 
-void BQ35100_I2C2_Reset(void)
+void BQ35100_I2C2_Reset_ACC(void)
 {
-    BQ35100_I2C2_WriteCommand(BQ35100_CONTROL_CMD, BQ35100_CTRL_RESET);
+    BQ35100_I2C2_WriteCommand(BQ35100_CONTROL_CMD, BQ35100_CTRL_ACC_RESET);
     UART_SendString("BQ35100 I2C2: Device reset\r\n");
 
     // Wait for reset to complete
     for (volatile int i = 0; i < 500000; i++);
 }
+void BQ35100_I2C2_Seal(void)
+{
+    BQ35100_I2C2_WriteCommand(BQ35100_CONTROL_CMD, BQ35100_CTRL_SEALED);
+    UART_SendString("BQ35100 I2C2: Gauge sealed\r\n");
+}
+
 
 /* ==================== Temperature Functions ==================== */
 
@@ -565,70 +579,97 @@ uint8_t BQ35100_I2C2_ReadBatteryAlert(void)
 
 uint8_t BQ35100_I2C2_ReadDataFlashByte(uint16_t address)
 {
+    /*
+     * Reads a byte from BQ35100 Data Flash
+     *
+     * Protocol (from TRM Chapter 12):
+     * 1. Write the data flash address to ManufacturerAccessControl (0x3E/0x3F)
+     * 2. Read the data from MACData (0x40-0x5F)
+     * 3. Verify checksum (optional but recommended)
+     *
+     * The BQ35100 returns 32 bytes of data starting at the requested address
+     */
+
     uint32_t timeout;
 
     // Step 1: Write data flash address to ManufacturerAccessControl
-    timeout = I2C2_TIMEOUT;
+    // Address is written in LITTLE ENDIAN format (LSB first, then MSB)
+
+    // Wait for bus to be free
+    timeout = 10000;
     while ((I2C2_ISR & I2C_ISR_BUSY) && timeout--);
     if (timeout == 0) return 0xFF;
 
+    // Clear any previous flags
     I2C2_ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF;
 
-    // Write: Command (0x3E) + Address LSB + Address MSB
+    // Write: Command (0x3E) + Address LSB + Address MSB (3 bytes total)
     I2C2_CR2 = 0;
     I2C2_CR2 |= ((uint32_t)BQ35100_I2C_ADDRESS << 1);
-    I2C2_CR2 |= (3 << 16);
+    I2C2_CR2 |= (3 << 16); // 3 bytes to write
     I2C2_CR2 |= I2C_CR2_AUTOEND;
     I2C2_CR2 |= I2C_CR2_START;
 
-    timeout = I2C2_TIMEOUT;
+    // Send command byte (ManufacturerAccessControl register address)
+    timeout = 10000;
     while (!(I2C2_ISR & I2C_ISR_TXIS) && timeout--);
     if (timeout == 0) return 0xFF;
     I2C2_TXDR = BQ35100_MAC_CONTROL;
 
-    timeout = I2C2_TIMEOUT;
+    // Send address LSB (low byte of data flash address)
+    timeout = 10000;
     while (!(I2C2_ISR & I2C_ISR_TXIS) && timeout--);
     if (timeout == 0) return 0xFF;
     I2C2_TXDR = (uint8_t)(address & 0xFF);
 
-    timeout = I2C2_TIMEOUT;
+    // Send address MSB (high byte of data flash address)
+    timeout = 10000;
     while (!(I2C2_ISR & I2C_ISR_TXIS) && timeout--);
     if (timeout == 0) return 0xFF;
     I2C2_TXDR = (uint8_t)((address >> 8) & 0xFF);
 
-    timeout = I2C2_TIMEOUT;
+    // Wait for transfer complete
+    timeout = 10000;
     while (!(I2C2_ISR & I2C_ISR_TC) && timeout--);
     if (timeout == 0) return 0xFF;
 
-    // Delay for device to fetch data
+    // Small delay for device to process request and fetch data from flash
     for (volatile int i = 0; i < 10000; i++);
 
-    // Step 2: Read from MACData
+    // Step 2: Read the data from MACData (0x40)
+    // The BQ35100 returns 32 bytes of data starting from the requested address
+    // We only need the first byte (offset 0 from the address we requested)
+
+    // Clear flags
     I2C2_ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF;
 
+    // Write command to set read pointer to MACData
     I2C2_CR2 = 0;
     I2C2_CR2 |= ((uint32_t)BQ35100_I2C_ADDRESS << 1);
-    I2C2_CR2 |= (1 << 16);
+    I2C2_CR2 |= (1 << 16); // 1 byte to write (register address)
     I2C2_CR2 |= I2C_CR2_AUTOEND;
     I2C2_CR2 |= I2C_CR2_START;
 
-    timeout = I2C2_TIMEOUT;
+    timeout = 10000;
     while (!(I2C2_ISR & I2C_ISR_TXIS) && timeout--);
     if (timeout == 0) return 0xFF;
-    I2C2_TXDR = BQ35100_MAC_DATA;
+    I2C2_TXDR = BQ35100_MAC_DATA; // Point to MACData register
 
-    timeout = I2C2_TIMEOUT;
+    // Wait for transfer complete
+    timeout = 10000;
     while (!(I2C2_ISR & I2C_ISR_TC) && timeout--);
     if (timeout == 0) return 0xFF;
 
+    // Now read 1 byte from MACData
     I2C2_CR2 = 0;
     I2C2_CR2 |= ((uint32_t)BQ35100_I2C_ADDRESS << 1);
-    I2C2_CR2 |= I2C_CR2_RD_WRN;
-    I2C2_CR2 |= (1 << 16);
+    I2C2_CR2 |= I2C_CR2_RD_WRN; // Read mode
+    I2C2_CR2 |= (1 << 16); // 1 byte to read
     I2C2_CR2 |= I2C_CR2_AUTOEND;
     I2C2_CR2 |= I2C_CR2_START;
 
-    timeout = I2C2_TIMEOUT;
+    // Read the byte
+    timeout = 10000;
     while (!(I2C2_ISR & I2C_ISR_RXNE) && timeout--);
     if (timeout == 0) return 0xFF;
 
@@ -639,18 +680,344 @@ uint8_t BQ35100_I2C2_ReadDataFlashByte(uint16_t address)
 
 uint8_t BQ35100_I2C2_ReadOperationConfigA(void)
 {
-    return BQ35100_I2C2_ReadDataFlashByte(BQ35100_OP_CONFIG_A_ADDR);
+    /*
+     * Reads Operation Config A register from data flash
+     *
+     * Address: 0x41B1
+     * Bit 7 (TEMPS): 0 = Internal temp sensor, 1 = External thermistor
+     * Bit 6 (EXTVCELL): External voltage cell measurement
+     * Bit 5 (WRTEMP): Write temperature enable
+     * Bit 4 (LF_EN): Lifetime data enable
+     * Bit 3: Reserved
+     * Bit 2 (GNDSEL): Ground select for ADC
+     * Bit 1-0 (GMSEL): Gauging mode select
+     *
+     * Default: 0x80 (binary: 10000000) - External temp enabled
+     */
+
+    return BQ35100_I2C1_ReadDataFlashByte(BQ35100_OP_CONFIG_A_ADDR);
 }
 
-bool BQ35100_I2C2_WriteOperationConfigA(uint8_t config)
+bool BQ35100_I2C2_WriteDataFlashByte(uint16_t address, uint8_t value)
 {
-    // Writing to data flash requires unsealing and proper checksum
-    // This is a simplified version - full implementation would need
-    // unseal, write, checksum calculation, and seal
-    // See BQ35100 TRM Chapter 10 for complete procedure
-    UART_SendString("Warning: Data flash write not fully implemented\r\n");
-    return false;
+    /*
+     * Writes a byte to BQ35100 Data Flash using correct protocol from SLUA790
+     */
+
+    uint32_t timeout;
+
+    UART_SendString("  Writing 0x");
+    UART_SendHex(value);
+    UART_SendString(" to address 0x");
+    UART_SendHex(address);
+    UART_SendString("...\r\n");
+
+    uint8_t addr_lsb = (uint8_t)(address & 0xFF);
+    uint8_t addr_msb = (uint8_t)((address >> 8) & 0xFF);
+
+    // Step 1: Write address to register 0x3E (ManufacturerAccessControl)
+    // Sequence: 0x3E, addr_lsb, addr_msb
+
+    timeout = 10000;
+    while ((I2C2_ISR & I2C_ISR_BUSY) && timeout--);
+    if (timeout == 0)
+    {
+        UART_SendString("  ERROR: Bus busy\r\n");
+        return false;
+    }
+
+    I2C2_ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF;
+
+    I2C2_CR2 = 0;
+    I2C2_CR2 |= ((uint32_t)BQ35100_I2C_ADDRESS << 1);
+    I2C2_CR2 |= (3 << 16); // 3 bytes
+    I2C2_CR2 |= I2C_CR2_AUTOEND;
+    I2C2_CR2 |= I2C_CR2_START;
+
+    // Send 0x3E
+    timeout = 10000;
+    while (!(I2C2_ISR & I2C_ISR_TXIS) && timeout--);
+    if (timeout == 0) return false;
+    I2C2_TXDR = 0x3E;
+
+    // Send address LSB
+    timeout = 10000;
+    while (!(I2C2_ISR & I2C_ISR_TXIS) && timeout--);
+    if (timeout == 0) return false;
+    I2C2_TXDR = addr_lsb;
+
+    // Send address MSB
+    timeout = 10000;
+    while (!(I2C2_ISR & I2C_ISR_TXIS) && timeout--);
+    if (timeout == 0) return false;
+    I2C2_TXDR = addr_msb;
+
+    timeout = 10000;
+    while (!(I2C2_ISR & I2C_ISR_TC) && timeout--);
+    if (timeout == 0) return false;
+
+    for (volatile int i = 0; i < 5000; i++);
+
+    // Step 2: Write data to register 0x40 (MACData)
+
+    timeout = 10000;
+    while ((I2C2_ISR & I2C_ISR_BUSY) && timeout--);
+    if (timeout == 0) return false;
+
+    I2C2_ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF;
+
+    I2C2_CR2 = 0;
+    I2C2_CR2 |= ((uint32_t)BQ35100_I2C_ADDRESS << 1);
+    I2C2_CR2 |= (2 << 16); // 2 bytes
+    I2C2_CR2 |= I2C_CR2_AUTOEND;
+    I2C2_CR2 |= I2C_CR2_START;
+
+    // Send 0x40
+    timeout = 10000;
+    while (!(I2C2_ISR & I2C_ISR_TXIS) && timeout--);
+    if (timeout == 0) return false;
+    I2C2_TXDR = 0x40;
+
+    // Send data value
+    timeout = 10000;
+    while (!(I2C2_ISR & I2C_ISR_TXIS) && timeout--);
+    if (timeout == 0) return false;
+    I2C2_TXDR = value;
+
+    timeout = 10000;
+    while (!(I2C2_ISR & I2C_ISR_TC) && timeout--);
+    if (timeout == 0) return false;
+
+    for (volatile int i = 0; i < 5000; i++);
+
+    // Step 3: Calculate checksum (CORRECT METHOD from SLUA790)
+    // Checksum = inverse of last byte of (addr_msb + addr_lsb + value)
+    uint16_t sum = addr_msb + addr_lsb + value;
+    uint8_t checksum = ~((uint8_t)(sum & 0xFF));
+
+    UART_SendString("  Address LSB: 0x");
+    UART_SendHex(addr_lsb);
+    UART_SendString(", MSB: 0x");
+    UART_SendHex(addr_msb);
+    UART_SendString("\r\n");
+    UART_SendString("  Sum: 0x");
+    UART_SendHex(sum);
+    UART_SendString(", Checksum: 0x");
+    UART_SendHex(checksum);
+    UART_SendString("\r\n");
+
+    // Write checksum to register 0x60
+
+    timeout = 10000;
+    while ((I2C2_ISR & I2C_ISR_BUSY) && timeout--);
+    if (timeout == 0) return false;
+
+    I2C2_ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF;
+
+    I2C2_CR2 = 0;
+    I2C2_CR2 |= ((uint32_t)BQ35100_I2C_ADDRESS << 1);
+    I2C2_CR2 |= (2 << 16);
+    I2C2_CR2 |= I2C_CR2_AUTOEND;
+    I2C2_CR2 |= I2C_CR2_START;
+
+    // Send 0x60
+    timeout = 10000;
+    while (!(I2C2_ISR & I2C_ISR_TXIS) && timeout--);
+    if (timeout == 0) return false;
+    I2C2_TXDR = 0x60;
+
+    // Send checksum
+    timeout = 10000;
+    while (!(I2C2_ISR & I2C_ISR_TXIS) && timeout--);
+    if (timeout == 0) return false;
+    I2C2_TXDR = checksum;
+
+    timeout = 10000;
+    while (!(I2C2_ISR & I2C_ISR_TC) && timeout--);
+    if (timeout == 0) return false;
+
+    for (volatile int i = 0; i < 5000; i++);
+
+    // Step 4: Write length to register 0x61
+    // Length = 4 + number of data bytes = 4 + 1 = 5
+
+    timeout = 10000;
+    while ((I2C2_ISR & I2C_ISR_BUSY) && timeout--);
+    if (timeout == 0) return false;
+
+    I2C2_ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF;
+
+    I2C2_CR2 = 0;
+    I2C2_CR2 |= ((uint32_t)BQ35100_I2C_ADDRESS << 1);
+    I2C2_CR2 |= (2 << 16);
+    I2C2_CR2 |= I2C_CR2_AUTOEND;
+    I2C2_CR2 |= I2C_CR2_START;
+
+    // Send 0x61
+    timeout = 10000;
+    while (!(I2C2_ISR & I2C_ISR_TXIS) && timeout--);
+    if (timeout == 0) return false;
+    I2C2_TXDR = 0x61;
+
+    // Send length (5)
+    timeout = 10000;
+    while (!(I2C2_ISR & I2C_ISR_TXIS) && timeout--);
+    if (timeout == 0) return false;
+    I2C2_TXDR = 0x05;
+
+    timeout = 10000;
+    while (!(I2C2_ISR & I2C_ISR_TC) && timeout--);
+    if (timeout == 0) return false;
+
+    // Wait for flash write
+    for (volatile int i = 0; i < 200000; i++);
+
+    UART_SendString("  Write sequence complete\r\n");
+
+    return true;
 }
+
+/* ==================== Unseal Functions ==================== */
+bool BQ35100_I2C2_Unseal(void)
+{
+    /*
+     * Unseals the device to allow data flash writes
+     * Default unseal keys stored in flash: 0x0414, 0x3672
+     * But must be sent BYTE-SWAPPED: 0x1404, 0x7236
+     */
+
+    UART_SendString("Unsealing device...\r\n");
+
+    // Send first unseal key BYTE-SWAPPED (0x0414 stored, send 0x1404)
+    if (!BQ35100_I2C2_WriteCommand(BQ35100_CONTROL_CMD, 0x0414))
+    {
+        UART_SendString("  ERROR: Failed to send first unseal key\r\n");
+        return false;
+    }
+
+    // Small delay
+    for (volatile int i = 0; i < 10000; i++);
+
+    // Send second unseal key BYTE-SWAPPED (0x3672 stored, send 0x7236)
+    if (!BQ35100_I2C2_WriteCommand(BQ35100_CONTROL_CMD, 0x3672))
+    {
+        UART_SendString("  ERROR: Failed to send second unseal key\r\n");
+        return false;
+    }
+
+    // Wait for unseal to complete
+    for (volatile int i = 0; i < 50000; i++);
+
+    // Verify unsealed by reading control status
+    uint16_t status = BQ35100_I2C2_ReadControlStatus();
+
+    UART_SendString("Control Status after unseal: 0x");
+    UART_SendHex(status);
+    UART_SendString("\r\n");
+
+    // Check SEC[1:0] bits (bits 14:13)
+    // 11 = Sealed, 10 = Unsealed, 01 = Full Access
+    uint8_t sec_bits = (status >> 13) & 0x03;
+
+    UART_SendString("Security bits [SEC1:0]: ");
+    UART_SendNumber(sec_bits);
+    UART_SendString(" (");
+    switch(sec_bits)
+    {
+        case 3:
+            UART_SendString("SEALED");
+            break;
+        case 2:
+            UART_SendString("UNSEALED");
+            break;
+        case 1:
+            UART_SendString("FULL ACCESS");
+            break;
+        default:
+            UART_SendString("RESERVED");
+            break;
+    }
+    UART_SendString(")\r\n");
+
+    if (sec_bits == 3)  // Still sealed
+    {
+        UART_SendString("  ERROR: Device still sealed!\r\n");
+        return false;
+    }
+
+    UART_SendString("[OK] Device unsealed successfully!\r\n");
+    return true;
+}
+
+bool BQ35100_I2C2_IsSealed(void)
+{
+    uint16_t status = BQ35100_I2C2_ReadControlStatus();
+    uint8_t sec_bits = (status >> 13) & 0x03;
+    return (sec_bits == 3);  // SEC[1:0] = 11 means sealed
+}
+
+
+/* ==================== ACC MODE Functions ==================== */
+
+void BQ35100_I2C2_ConfigureACCMode(void)
+{
+    UART_SendString("\r\n=== Configuring BQ35100 for ACC Mode ===\r\n");
+
+    // Step 1: Ensure device is unsealed
+    if (BQ35100_I2C2_IsSealed())
+    {
+        UART_SendString("Device is SEALED. Unsealing...\r\n");
+        if (!BQ35100_I2C2_Unseal())
+        {
+            UART_SendString("[ERROR] Failed to unseal device!\r\n");
+            return;
+        }
+    }
+    else
+    {
+        UART_SendString("Device is already UNSEALED.\r\n");
+    }
+
+    // Step 2: Read current configuration
+    uint8_t current_config = BQ35100_I2C2_ReadOperationConfigA();
+    UART_SendString("Current Operation Config A: 0x");
+    UART_SendHex(current_config);
+    UART_SendString("\r\n");
+
+    // Step 3: Check if already configured for ACC mode
+    if ((current_config & 0x03) == 0x00)
+    {
+        UART_SendString("Already configured for ACC mode!\r\n\r\n");
+        return;
+    }
+
+    // Step 4: Clear GMSEL bits [1:0] to 00 (ACC mode)
+    uint8_t new_config = (current_config & 0xFC);
+
+    UART_SendString("New Operation Config A: 0x");
+    UART_SendHex(new_config);
+    UART_SendString("\r\n");
+
+    // Step 5: Write updated configuration to data flash
+    UART_SendString("Writing to data flash...\r\n");
+    if (BQ35100_I2C2_WriteDataFlashByte(BQ35100_OP_CONFIG_A_ADDR, new_config))
+    {
+        UART_SendString("[OK] Configuration written successfully!\r\n");
+
+        // Wait for write to complete
+        for (volatile int i = 0; i < 500000; i++);
+
+        UART_SendString("Configuration saved to flash.\r\n");
+    }
+    else
+    {
+        UART_SendString("[ERROR] Failed to write configuration!\r\n");
+    }
+
+    UART_SendString("\r\n");
+}
+
+
 
 /* ==================== Test Functions ==================== */
 
@@ -695,14 +1062,14 @@ void BQ35100_I2C2_Test(void) // External Temp, current, voltage, accumulated cap
     // Read current
     int16_t current = BQ35100_I2C2_ReadCurrent();
     UART_SendString("Current: ");
-    UART_SendNumber(current);
+    UART_SendSignedNumber(current);
     UART_SendString(" mA\r\n");
 
 
     // Read accumulated capacity
     uint32_t capacity = BQ35100_I2C2_ReadAccumulatedCapacity();
     UART_SendString("Accumulated Capacity: ");
-    UART_SendNumber(capacity);
+    UART_SendSignedNumber(capacity);
     UART_SendString(" uAh\r\n");
 
     UART_SendString("\r\n");
@@ -783,7 +1150,7 @@ void BQ35100_I2C2_PrintACCStatus(void)
     uint8_t alert = BQ35100_I2C2_ReadBatteryAlert();
 
     UART_SendString("Accumulated Capacity: ");
-    UART_SendNumber(capacity);
+    UART_SendSignedNumber(capacity);
     UART_SendString(" uAh\r\n");
 
     UART_SendString("Voltage: ");

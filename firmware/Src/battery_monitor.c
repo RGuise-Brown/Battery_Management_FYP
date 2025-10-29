@@ -38,6 +38,7 @@ void BatteryMonitor_Init(void)
     TempSensor_Shutdown_Init();
     TempSensor_Enable();
     ADC_Init();
+    TempSensor_Disable();
 
     UART_SendString("\n========================================\r\n");
     UART_SendString("   Initialization Complete!            \r\n");
@@ -86,7 +87,12 @@ void BatteryMonitor_ReadEOS(BatteryMonitorData_t *data)
 
 void BatteryMonitor_ReadADC(BatteryMonitorData_t *data)
 {
-    data->adc_raw = ADC_Read_Raw();
+    TempSensor_Enable();
+
+    // wait to stabalise
+    for (volatile int i = 0; i < 1000; i++);
+
+	data->adc_raw = ADC_Read_Raw();
 
     if (data->adc_raw > 0)
     {
@@ -98,6 +104,8 @@ void BatteryMonitor_ReadADC(BatteryMonitorData_t *data)
     {
         data->adc_valid = false;
     }
+
+    TempSensor_Disable();
 }
 
 void BatteryMonitor_ReadAll(BatteryMonitorData_t *data)
@@ -147,7 +155,7 @@ void BatteryMonitor_PrintSummary(const BatteryMonitorData_t *data)
         UART_SendString(" mA\r\n");
 
         UART_SendString("| Capacity:   ");
-        UART_SendNumber(data->acc_capacity_uah);
+        UART_SendSignedNumber(data->acc_capacity_uah);
         UART_SendString(" uAh\r\n");
 
         UART_SendString("| Temp (BQ):  ");
@@ -243,7 +251,7 @@ void BatteryMonitor_PrintDetailed(const BatteryMonitorData_t *data)
         UART_SendString(" mA\r\n");
 
         UART_SendString("Accumulated Cap:     ");
-        UART_SendNumber(data->acc_capacity_uah);
+        UART_SendSignedNumber(data->acc_capacity_uah);
         UART_SendString(" uAh\r\n");
 
         UART_SendString("Temperature:         ");

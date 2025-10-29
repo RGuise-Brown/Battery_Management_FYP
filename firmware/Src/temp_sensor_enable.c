@@ -59,7 +59,7 @@ void TempSensor_Enable(void)
     for (volatile int i = 0; i < 20000; i++);  // ~1ms at 16MHz
 
     // Optional debug message (comment out for less verbose output)
-    UART_SendString("Temperature sensor enabled\r\n");
+    //UART_SendString("Temperature sensor enabled\r\n");
 }
 
 /**

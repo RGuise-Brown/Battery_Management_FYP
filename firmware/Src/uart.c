@@ -130,6 +130,46 @@ void UART_SendNumber(uint32_t num) // decimals
 	}
 }
 
+void UART_SendSignedNumber(int32_t num) // supports negatives
+{
+    char buffer[12]; // enough for -2147483648
+    int i = 0;
+
+    // Handle zero directly
+    if (num == 0)
+    {
+        UART_SendChar('0');
+        return;
+    }
+
+    // Handle negative
+    if (num < 0)
+    {
+        UART_SendChar('-');
+        // Special case: INT32_MIN (−2147483648)
+        if (num == INT32_MIN)
+        {
+            // Print directly because abs(INT32_MIN) overflows
+            UART_SendString("2147483648");
+            return;
+        }
+        num = -num;
+    }
+
+    // Convert number to string (reverse order)
+    while (num > 0)
+    {
+        buffer[i++] = '0' + (num % 10);
+        num /= 10;
+    }
+
+    // Send digits in correct order
+    while (i > 0)
+    {
+        UART_SendChar(buffer[--i]);
+    }
+}
+
 void UART_SendHex(uint32_t num) //hexadecimals
 {
     char hex_chars[] = "0123456789ABCDEF";

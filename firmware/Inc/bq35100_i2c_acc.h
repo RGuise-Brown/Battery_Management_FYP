@@ -75,6 +75,7 @@
 void BQ35100_I2C2_Init(void);
 bool BQ35100_I2C2_IsPresent(void);
 bool BQ35100_I2C2_ScanAddress(uint8_t address);
+void BQ35100_I2C2_ResetAccumulatedCapacity(void);
 
 // Gauge Enable Pin Control (PF3)
 void BQ35100_ACC_GaugePin_Enable(void);
@@ -92,6 +93,8 @@ uint16_t BQ35100_I2C2_ReadDeviceType(void);
 void BQ35100_I2C2_GaugeStart(void);
 void BQ35100_I2C2_GaugeStop(void);
 void BQ35100_I2C2_Reset(void);
+void BQ35100_I2C2_Reset_ACC(void);
+void BQ35100_I2C2_Seal(void);
 
 /* Temperature Reading Functions */
 uint16_t BQ35100_I2C2_ReadRawTemp(void);
@@ -112,6 +115,12 @@ uint8_t BQ35100_I2C2_ReadBatteryAlert(void);
 uint8_t BQ35100_I2C2_ReadDataFlashByte(uint16_t address);
 uint8_t BQ35100_I2C2_ReadOperationConfigA(void);
 bool BQ35100_I2C2_WriteOperationConfigA(uint8_t config);
+
+/* Unseal Functions */
+bool BQ35100_I2C2_Unseal(void);
+bool BQ35100_I2C2_IsSealed(void);
+
+void BQ35100_I2C2_ConfigureACCMode(void);
 
 /* Test and Diagnostic Functions */
 void BQ35100_I2C2_Test(void);

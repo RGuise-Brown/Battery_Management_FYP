@@ -221,7 +221,7 @@ static bool i2c1_read_word(uint8_t dev_addr_7b, uint8_t reg_addr, uint16_t *out_
     return true;
 }
 
-/* ==================== Private Helper Functions ==================== */
+/* ==================== Initialisation and Calibration  ==================== */
 
 /* Public init: assumes user already enabled clocks and configured GPIOs & I2C timing as in your posted code.
    We'll program INA226 registers here.
@@ -241,6 +241,20 @@ void INA226_I2C1_Init(void)
     {
         UART_SendString("INA226 configured OK\r\n");
     }
+}
+
+bool INA226_IsPresent(void)
+{
+    uint16_t raw;
+    bool ok = i2c1_read_word(INA226_I2C_ADDR_7BIT, INA226_REG_CONFIG, &raw);
+    if (!ok)
+    {
+        UART_SendString("INA226 not detected on I2C1\r\n");
+        return false;
+    }
+
+    UART_SendString("INA226 detected on I2C1\r\n");
+    return true;
 }
 
 /* Write configuration and calibration values to INA226 */
@@ -277,64 +291,23 @@ bool INA226_ConfigAndCal(void)
     return true;
 }
 
+/* ==================== Read Value Functions  ==================== */
+
 /* Read once and convert to integer units (mV, mA, mW). No floating point.
    Returns true on success.
 */
 bool INA226_ReadOnce(int32_t *bus_mV, int32_t *shunt_mV, int32_t *current_mA, uint32_t *power_mW)
 {
-    uint16_t raw;
-    int16_t raw_shunt, raw_current;
-    uint16_t raw_bus, raw_power;
-    bool ok;
+    if (!INA226_ReadBusVoltage(bus_mV))   return false;
+    if (!INA226_ReadShuntVoltage(shunt_mV)) return false;
+    if (!INA226_ReadCurrent_mA(current_mA)) return false;
+    if (!INA226_ReadPower_mW(power_mW))   return false;
 
-    /* ----- Read raw registers ----- */
-    ok = i2c1_read_word(INA226_I2C_ADDR_7BIT, INA226_REG_SHUNTV, &raw);
-    if (!ok) { UART_SendString("Read shunt fail\r\n"); return false; }
-    raw_shunt = (int16_t)raw;
-
-    ok = i2c1_read_word(INA226_I2C_ADDR_7BIT, INA226_REG_BUSV, &raw);
-    if (!ok) { UART_SendString("Read bus fail\r\n"); return false; }
-    raw_bus = raw;
-
-    ok = i2c1_read_word(INA226_I2C_ADDR_7BIT, INA226_REG_CURRENT, &raw);
-    if (!ok) { UART_SendString("Read current fail\r\n"); return false; }
-    raw_current = (int16_t)raw;
-
-    ok = i2c1_read_word(INA226_I2C_ADDR_7BIT, INA226_REG_POWER, &raw);
-    if (!ok) { UART_SendString("Read power fail\r\n"); return false; }
-    raw_power = raw;
-
-    /* ----- Convert raw values ----- */
-
-    int32_t bus_val_mV   = ((int32_t)raw_bus * 5) / 4;  /* 1.25 mV/bit */
-    int32_t shunt_uV     = ((int32_t)raw_shunt * 5) / 2;/* 2.5 µV/bit */
-    int32_t shunt_val_mV = shunt_uV / 1000;
-
-    const int32_t Rshunt_mOhm = 75000;                  /* 75 Ω test resistor */
-    int32_t current_uA  = (shunt_uV * 1000) / Rshunt_mOhm;
-    int32_t current_val_mA = (current_uA + 500) / 1000;  /* round to mA */
-    int64_t tmp         = (int64_t)bus_val_mV * (int64_t)current_uA; /* nW */
-    uint32_t power_val_uW = (uint32_t)(tmp / 1000);      /* µW */
-    uint32_t power_val_mW = (power_val_uW + 500) / 1000; /* mW */
-
-    /* ----- Store outputs ----- */
-    if (bus_mV)   *bus_mV   = bus_val_mV;
-    if (shunt_mV) *shunt_mV = shunt_val_mV;
-    if (current_mA) *current_mA = current_val_mA;
-    if (power_mW) *power_mW = power_val_mW;
-
-    /* ----- Debug prints ----- */
-    UART_SendString("RAW_SHUNT=0x"); UART_SendHex(raw_shunt);
-    UART_SendString(", RAW_BUS=0x"); UART_SendHex(raw_bus);
-    UART_SendString(", RAW_CURR=0x"); UART_SendHex(raw_current);
-    UART_SendString(", RAW_PWR=0x"); UART_SendHex(raw_power);
-    UART_SendString("\r\n");
-
-    UART_SendString("Bus: ");   UART_SendNumber(bus_val_mV);   UART_SendString(" mV, ");
-    UART_SendString("Shunt: "); UART_SendNumber(shunt_val_mV); UART_SendString(" mV, ");
-    UART_SendString("I: ");     UART_SendNumber(current_uA);   UART_SendString(" uA, ");
-    UART_SendString("P: ");     UART_SendNumber(power_val_uW); UART_SendString(" uW\r\n");
-
+    /*UART_SendString("Bus: ");   UART_SendNumber(*bus_mV);
+    UART_SendString(" mV, Shunt: "); UART_SendNumber(*shunt_mV);
+    UART_SendString(" mV, I: "); UART_SendNumber(*current_mA);
+    UART_SendString(" mA, P: "); UART_SendNumber(*power_mW);
+    UART_SendString(" mW\r\n");*/
     return true;
 }
 
@@ -379,3 +352,172 @@ void INA226_ReadContinuous(volatile bool *stop_requested)
 
     UART_SendString("INA226 continuous read stopped\r\n");
 }
+
+void INA226_ReadPrint(void)
+{
+    int32_t bus_mV;
+    int32_t shunt_mV;
+    int32_t current_mA;
+    uint32_t power_mW;
+
+    if (INA226_ReadOnce(&bus_mV, &shunt_mV, &current_mA, &power_mW))
+    {
+        /* Print nicely */
+        UART_SendString("Bus: ");
+        UART_SendNumber(bus_mV); UART_SendString(" mV, ");
+        UART_SendString("Shunt: ");
+        UART_SendNumber(shunt_mV); UART_SendString(" mV, ");
+        UART_SendString("I: ");
+        UART_SendNumber(current_mA); UART_SendString(" mA, ");
+        UART_SendString("P: ");
+        UART_SendNumber(power_mW); UART_SendString(" mW\r\n");
+    }
+    else
+    {
+        UART_SendString("INA226 read failed in continuous loop\r\n");
+    }
+
+}
+
+void INA226_Compare_Measured_vs_Calculated(void)
+{
+    int32_t bus_mV, shunt_mV;
+    int32_t current_calc_mA, current_meas_mA;
+    uint32_t power_calc_mW, power_meas_mW;
+
+    UART_SendString("\r\n=== INA226 Comparison: Measured vs Calculated ===\r\n");
+
+    /* Read bus and shunt voltage first */
+    if (!INA226_ReadBusVoltage(&bus_mV))
+    {
+        UART_SendString("Failed to read bus voltage\r\n");
+        return;
+    }
+    if (!INA226_ReadShuntVoltage(&shunt_mV))
+    {
+        UART_SendString("Failed to read shunt voltage\r\n");
+        return;
+    }
+
+    /* --- Calculate current and power manually --- */
+    /* I_calc = Vshunt_mV / Rshunt_mOhm */
+    current_calc_mA = (shunt_mV * 1000) / INA226_RSHUNT_mOHM;   /* mA */
+    power_calc_mW   = (bus_mV * current_calc_mA) / 1000;        /* mW */
+
+    /* --- Read measured (register) values --- */
+    if (!INA226_ReadCurrent_mA(&current_meas_mA))
+    {
+        UART_SendString("Failed to read measured current\r\n");
+        return;
+    }
+
+    if (!INA226_ReadPower_mW(&power_meas_mW))
+    {
+        UART_SendString("Failed to read measured power\r\n");
+        return;
+    }
+
+    /* --- Print comparison --- */
+    UART_SendString("Bus Voltage: ");
+    UART_SendNumber(bus_mV); UART_SendString(" mV\r\n");
+
+    UART_SendString("Shunt Voltage: ");
+    UART_SendNumber(shunt_mV); UART_SendString(" mV\r\n");
+
+    UART_SendString("\r\n-- Current Comparison --\r\n");
+    UART_SendString("Calculated: ");
+    UART_SendNumber(current_calc_mA);
+    UART_SendString(" mA\r\n");
+    UART_SendString("Measured (INA226): ");
+    UART_SendNumber(current_meas_mA);
+    UART_SendString(" mA\r\n");
+
+    UART_SendString("\r\n-- Power Comparison --\r\n");
+    UART_SendString("Calculated: ");
+    UART_SendNumber(power_calc_mW);
+    UART_SendString(" mW\r\n");
+    UART_SendString("Measured (INA226): ");
+    UART_SendNumber(power_meas_mW);
+    UART_SendString(" mW\r\n");
+
+    UART_SendString("============================================\r\n\r\n");
+}
+
+
+/* ========== Individual read functions ========== */
+
+/* Read Bus Voltage in millivolts */
+bool INA226_ReadBusVoltage(int32_t *bus_mV)
+{
+    uint16_t raw;
+    if (!i2c1_read_word(INA226_I2C_ADDR_7BIT, INA226_REG_BUSV, &raw))
+        return false;
+
+    /* LSB = 1.25 mV = 5/4 mV */
+    *bus_mV = ((int32_t)raw * 5) / 4;
+    return true;
+}
+
+/* Read Shunt Voltage in millivolts */
+bool INA226_ReadShuntVoltage(int32_t *shunt_mV)
+{
+    uint16_t raw;
+    if (!i2c1_read_word(INA226_I2C_ADDR_7BIT, INA226_REG_SHUNTV, &raw))
+        return false;
+
+    int32_t shunt_uV = ((int16_t)raw * 5) / 2;    /* 2.5 µV/bit */
+    *shunt_mV = shunt_uV / 1000;                  /* to mV */
+    return true;
+}
+
+/* Read Current from register in microamps */
+bool INA226_ReadCurrent_mA(int32_t *current_mA)
+{
+    uint16_t raw;
+    if (!i2c1_read_word(INA226_I2C_ADDR_7BIT, INA226_REG_CURRENT, &raw))
+        return false;
+
+    int32_t raw_signed = (int16_t)raw;
+    /* convert raw × Current_LSB (µA/bit) → mA */
+    int32_t current_uA = raw_signed * INA226_CURRENT_LSB_UA;
+    *current_mA = (current_uA + 500) / 1000;     /* rounded mA */
+    return true;
+}
+
+/* Read Current (computed from shunt voltage) in microamps */
+bool INA226_ReadCurrentCalc_mA(int32_t *current_mA)
+{
+    int32_t shunt_mV;
+    if (!INA226_ReadShuntVoltage(&shunt_mV))
+        return false;
+
+    /* Convert to µA: I = Vshunt / Rshunt */
+    /* Vshunt_mV → mA = (Vshunt_mV) / Rshunt_mOHM */
+    *current_mA = (shunt_mV) / INA226_RSHUNT_mOHM;
+    return true;
+}
+
+/* Read Power from Register in microwatts */
+bool INA226_ReadPower_mW(uint32_t *power_mW)
+{
+    uint16_t raw;
+    if (!i2c1_read_word(INA226_I2C_ADDR_7BIT, INA226_REG_POWER, &raw))
+        return false;
+
+    uint32_t power_uW = (uint32_t)raw * INA226_POWER_LSB_UW;
+    *power_mW = (power_uW + 500) / 1000;
+    return true;
+}
+
+/* Read Power (computed from Bus × Current) in microwatts */
+bool INA226_ReadPowerCalc_mW(uint32_t *power_mW)
+{
+    int32_t bus_mV, current_mA;
+    if (!INA226_ReadBusVoltage(&bus_mV))   return false;
+    if (!INA226_ReadCurrentCalc_mA(&current_mA)) return false;
+
+    int64_t tmp = (int64_t)bus_mV * (int64_t)current_mA; /* µW */
+    *power_mW = (uint32_t)(tmp / 1000);                  /* mW */
+    return true;
+}
+

@@ -57,5 +57,7 @@ void UART_Init(void);
 void UART_SendChar(char ch);
 void UART_SendString(const char* str);
 void UART_SendNumber(uint32_t num);
+void UART_SendSignedNumber(int32_t num); // supports negatives
+void UART_SendHex(uint32_t num);
 
 #endif /* UART_H_ */
