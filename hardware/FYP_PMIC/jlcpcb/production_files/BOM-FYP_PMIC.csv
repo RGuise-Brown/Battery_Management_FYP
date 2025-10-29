@@ -1,0 +1,20 @@
+Comment,Designator,Footprint,LCSC
+0.1u,"C_SR1,C_SRN2,C_SRP2,C_bat1",C_0402_1005Metric,C1525
+1u,"C_reg1,C_regin1",C_0603_1608Metric,C15849
+100,"R_SCL_1,R_SDA_1,R_SRN1,R_SRP1,R_bat1",R_0805_2012Metric,C17408
+10k,"R_SCL2,R_SDA_2,R_ge_in1",R_0805_2012Metric,C17414
+100k,R_alert1,R_1206_3216Metric,C17900
+1M,R_ge1,R_1206_3216Metric,C17927
+1k,"R_alert2,R_ge2",R_1206_3216Metric,C4410
+BQ35100PWR,BQ35100,SOP65P640X120-14N,C469863
+WSL1206R0100FEA,R_CRS1,RESC3216X90,C843879
+TestPoint,TP_SCL1,TestPoint_Pad_D2.0mm,
+10k NTC,TH_TS1,C_Disc_D5.0mm_W2.5mm_P2.50mm,
+Conn_01x06_Female,J2_female1,PinSocket_1x06_P2.54mm_Vertical,
+TestPoint,TP_REGIN1,TestPoint_Pad_D2.0mm,
+Conn_01x02_Male,JP_GE1,PinHeader_1x02_P2.54mm_Vertical,
+Conn_01x06_Male,J1_male1,PinHeader_1x06_P2.54mm_Vertical,
+TestPoint,TP_REG1,TestPoint_Pad_D2.0mm,
+TestPoint,TP_SDA1,TestPoint_Pad_D2.0mm,
+Conn_01x06_Male,J2_male1,PinHeader_1x06_P2.54mm_Vertical,
+Conn_01x06_Female,J1_female1,PinSocket_1x06_P2.54mm_Vertical,

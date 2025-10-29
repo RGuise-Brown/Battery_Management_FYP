@@ -1,0 +1,31 @@
+Designator,Val,Package,Mid X,Mid Y,Rotation,Layer
+BQ35100,BQ35100PWR,SOP65P640X120-14N,79.20625,-64.22125,0.0,top
+C_bat1,0.1u,C_0402_1005Metric,67.75,-68.0,90.0,top
+C_reg1,1u,C_0603_1608Metric,67.75,-55.75,180.0,top
+C_regin1,1u,C_0603_1608Metric,79.0,-73.5,90.0,top
+C_SR1,0.1u,C_0402_1005Metric,84.5,-69.25,0.0,top
+C_SRN2,0.1u,C_0402_1005Metric,87.75,-69.77,-90.0,top
+C_SRP2,0.1u,C_0402_1005Metric,83.5,-72.98,-90.0,top
+J1_female1,Conn_01x06_Female,PinSocket_1x06_P2.54mm_Vertical,105.5,-70.25,0.0,top
+J1_male1,Conn_01x06_Male,PinHeader_1x06_P2.54mm_Vertical,100.75,-70.25,0.0,top
+J2_female1,Conn_01x06_Female,PinSocket_1x06_P2.54mm_Vertical,57.125,-68.475,0.0,top
+J2_male1,Conn_01x06_Male,PinHeader_1x06_P2.54mm_Vertical,52.5,-68.5,0.0,top
+JP_GE1,Conn_01x02_Male,PinHeader_1x02_P2.54mm_Vertical,70.75,-74.5,0.0,top
+R_alert1,100k,R_1206_3216Metric,67.25,-60.5,-90.0,top
+R_alert2,1k,R_1206_3216Metric,63.25,-63.0,90.0,top
+R_bat1,100,R_0805_2012Metric,65.0,-70.25,-90.0,top
+R_CRS1,WSL1206R0100FEA,RESC3216X90,94.0,-76.25,0.0,top
+R_ge1,1M,R_1206_3216Metric,66.25,-74.725,-90.0,top
+R_ge2,1k,R_1206_3216Metric,62.75,-74.725,90.0,top
+R_ge_in1,10k,R_0805_2012Metric,74.25,-74.975,-90.0,top
+R_SCL2,10k,R_0805_2012Metric,95.0,-65.25,0.0,top
+R_SCL_1,100,R_0805_2012Metric,90.5,-64.25,90.0,top
+R_SDA_1,100,R_0805_2012Metric,91.0,-56.6625,90.0,top
+R_SDA_2,10k,R_0805_2012Metric,94.75,-61.25,0.0,top
+R_SRN1,100,R_0805_2012Metric,87.25,-76.25,180.0,top
+R_SRP1,100,R_0805_2012Metric,91.75,-70.5,90.0,top
+TH_TS1,10k NTC,C_Disc_D5.0mm_W2.5mm_P2.50mm,78.0,-56.0,0.0,top
+TP_REG1,TestPoint,TestPoint_Pad_D2.0mm,72.25,-57.0,90.0,top
+TP_REGIN1,TestPoint,TestPoint_Pad_D2.0mm,77.25,-70.0,90.0,top
+TP_SCL1,TestPoint,TestPoint_Pad_D2.0mm,86.25,-63.25,180.0,top
+TP_SDA1,TestPoint,TestPoint_Pad_D2.0mm,86.25,-59.0,90.0,top
