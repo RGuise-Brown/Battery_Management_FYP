@@ -75,3 +75,5 @@ Release/
 *.htm
 *.lnp
 *.bak
+.DS_Store
+**/.DS_Store
